@@ -1,0 +1,206 @@
+<div>
+    <!--all the search bar stuff-->
+    <div>
+        <!--div containing the search bar and results-->
+        <div id='searchDiv' class="autocomplete" style="width:90%; float: left; position: relative">
+            <input id='searchField' type='text' placeholder='search...' style="width: 100%">
+            <!--results div, hidden when not searching-->
+            <div id='resultsDiv' style="z-index: 99; position: absolute; width: 100%; display: none;">
+                <!--divs for results and dividers-->
+                <div style="background-color: lightgray;"><b>Videos</b></div>
+                <div id='videoList' style="width: 100%"></div>
+                <div style="background-color: lightgray;"><b>Topics</b></div>
+                <div id='topicList'></div>
+                <div style="background-color: lightgray;"><b>Moments</b></div>
+                <div id='momentList' style="width: 100%"></div>
+            </div>
+        </div>
+        <button onclick="searchClipr()" style='width: 8%; float: left'>Search</button>
+    </div>
+
+    <script>
+        //hides results upon clicking outside of search
+        document.addEventListener('click', hideSearch)
+        //searches when input of searchField is changed
+        document.getElementById('searchField').addEventListener('input', function () {
+            searchClipr().then(() => {
+                //small pause to make results load more smoothly
+                setTimeout(() => { $('#resultsDiv').css('display', 'block');}, 600);
+                
+            })
+        })
+
+        //variables for calling clipr api
+        var appSyncURL = "https://lo624wnjgbd2fltofinhopkuxe.appsync-api.us-east-1.amazonaws.com/graphql"
+        var myHeaders = new Headers();
+        myHeaders.append("Authorization", appSyncToken);
+        myHeaders.append("Content-Type", "application/json")
+
+        //function for calling api for searches
+        async function searchClipr() {
+            //clears the divs of any previous results
+            videoList = document.getElementById('videoList')
+            while (videoList.firstChild) {
+                videoList.removeChild(videoList.firstChild)
+            }
+            topicList = document.getElementById('topicList')
+            while (topicList.firstChild) {
+                topicList.removeChild(topicList.firstChild)
+            }
+            momentList = document.getElementById('momentList')
+            while (momentList.firstChild) {
+                momentList.removeChild(momentList.firstChild)
+            }
+
+
+            //sets up the queries using the search term
+            searchQuery = document.getElementById('searchField').value
+            var graphqlJobSearch = JSON.stringify({
+                query: "query MyQuery {\n  getJobs(filter: {_search: \"" + searchQuery + "\", teamId: \"577480a7-235d-47db-a338-1445a529b4bf\"}, first: 20) {\n    edges {\n      node {\n        id\n        title\n        status\n        poster(sizes: {height: 72, width: 128}) {\n          url\n        }\n      }\n    }\n  }\n}\n\n",
+                variables: {}
+            })
+            dataJobSearch = {
+                method: 'POST',
+                headers: myHeaders,
+                body: graphqlJobSearch,
+                redirect: 'follow'
+            }
+
+            var graphqlTopicSearch = JSON.stringify({
+                query: "query MyQuery {\n  searchMoments(filter: {teamId: \"577480a7-235d-47db-a338-1445a529b4bf\", _search: \"" + searchQuery + "\", clipType: {eq: \"Topic\"}}) {\n    edges {\n      node {\n        clipType\n        description\n        name\n        momentType\n        thumbnail(sizes: {height: 72, width: 128}) {\n          url\n        }\n        id\n        job {\n          id\n          status\n          title\n        }\n      }\n    }\n  }\n}\n\n\n",
+                variables: {}
+            })
+            dataTopicSearch = {
+                method: 'POST',
+                headers: myHeaders,
+                body: graphqlTopicSearch,
+                redirect: 'follow'
+            }
+
+            var graphqlMomentSearch = JSON.stringify({
+                query: "query MyQuery {\n  searchMoments(filter: {teamId: \"577480a7-235d-47db-a338-1445a529b4bf\", _search: \"" + searchQuery + "\", clipType: {ne: \"Topic\"}}) {\n    edges {\n      node {\n        clipType\n        description\n        name\n        momentType\n        thumbnail(sizes: {height: 72, width: 128}) {\n          url\n        }\n        id\n        job {\n          id\n          status\n          title\n        }\n      }\n    }\n  }\n}\n\n\n",
+                variables: {}
+            })
+            dataMomentSearch = {
+                method: 'POST',
+                headers: myHeaders,
+                body: graphqlMomentSearch,
+                redirect: 'follow'
+            }
+
+
+            //queries the api and creates a button in respective div for each result
+            fetch(appSyncURL, dataJobSearch)
+                .then(response => response.text())
+                .then(result => {
+                    data = JSON.parse(result)['data']['getJobs']['edges']
+                    data.forEach(video => {
+                        video = video.node
+                        var thumbUrl = video.poster[0].url
+                        if (video.status != "InProgress") {
+                            //create and add the button
+                            var newButton = document.createElement("BUTTON")
+                            newButton.innerHTML = "<p style='width: 60%; float: left;'><b>" + video.title + "</b></p><img src='" + thumbUrl + "' style='float: left'></img>"
+                            newButton.onclick = function () {
+                                openPlayer(video.id, '0')
+                            }
+                            newButton.style = "width: 100%; height: 100px;"
+                            document.getElementById('videoList').appendChild(newButton)
+                        }
+                    });
+                })
+                .catch(error => console.log('error', error))
+            fetch(appSyncURL, dataTopicSearch)
+                .then(response => response.text())
+                .then(result => {
+                    data = JSON.parse(result)['data']['searchMoments']['edges']
+                    data.forEach(topic => {
+                        topic = topic.node
+                        var job = topic.job
+                        var thumbUrl = topic.thumbnail[0].url
+                        console.log(thumbUrl)
+                        if (job.status != "InProgress") {
+                            //create and add the button
+                            var newButton = document.createElement("BUTTON")
+                            console.log(topic)
+                            newButton.innerHTML = "<p style='width: 60%; float: left'><b>" + job.title + '</b><br><b>Topic</b><br>' + topic.name + "</p><img src='" + thumbUrl + "' style='float: left'></img>"
+                            console.log(newButton.innerHTML)
+                            newButton.onclick = async function () {
+                                startTime = await getStartTime(topic, job)
+                                openPlayer(job.id, startTime)
+                            }
+                            newButton.style = "width: 100%; height: 100px;"
+                            document.getElementById('topicList').appendChild(newButton)
+                        }
+                    })
+                })
+                .catch(error => console.log(error))
+            fetch(appSyncURL, dataMomentSearch)
+                .then(response => response.text())
+                .then(result => {
+                    console.log(result)
+                    data = JSON.parse(result)['data']['searchMoments']['edges']
+                    data.forEach(moment => {
+                        moment = moment.node
+                        var job = moment.job
+                        console.log(job.title)
+                        var thumbUrl = moment.thumbnail[0].url
+                        if (job.status != "InProgress") {
+                            //create and add the button
+                            var newButton = document.createElement("BUTTON")
+                            newButton.innerHTML = "<p style='width: 60%; float: left'><b>" + job.title + '</b><br><b>' + moment.clipType + '</b><br>' + moment.description.substring(0, 50) + "</p><img src='" + thumbUrl + "' style='float: left'></img>"
+                            newButton.onclick = async function () {
+                                startTime = await getStartTime(moment, job)
+                                openPlayer(job.id, startTime)
+                            }
+                            newButton.style = "width: 100%; height: 100px;"
+                            document.getElementById('momentList').appendChild(newButton)
+                        }
+                    })
+                })
+                .catch(error => console.log(error))
+        }
+
+        //gets the start time for a moment, so the player starts at the correct time
+        async function getStartTime(topic, job) {
+            //sets up query to clipr api
+            var graphqlGetMoments = JSON.stringify({
+                query: "query MyQuery {\n  getMoments(jobId: \"" + job.id + "\") {\n    edges {\n      node {\n        id\n        startTime\n  clipType\n  name\n    description\n  }\n    }\n  }\n}\n\n\n",
+                variables: {}
+            })
+            dataGetMoments = {
+                method: 'POST',
+                headers: myHeaders,
+                body: graphqlGetMoments,
+                redirect: 'follow'
+            }
+
+            //queries clipr api
+            result = await fetch(appSyncURL, dataGetMoments)
+                .then(response => response.text())
+            data = JSON.parse(result)['data']['getMoments']['edges']
+            var i;
+            search = document.getElementById("searchField").value
+            //goes through every moment and finds the one that matches the id
+            for (i = 0; i < data.length; i++) {
+                moment = data[i].node
+                if (topic.id == moment.id) {
+                    startTime = moment.startTime
+                    break
+                }
+            }
+            return startTime
+        }
+
+        //hides the search results
+        function hideSearch() {
+            $('#resultsDiv').css('display', 'none')
+        }
+
+        //opens a link to a video player
+        function openPlayer(jobId, startTime) {
+            link = "http://localhost:4000/video-player/?job-id=" + jobId + "&time=" + startTime
+            window.location.href = link
+        }
+    </script>
+</div>

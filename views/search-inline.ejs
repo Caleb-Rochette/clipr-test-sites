@@ -1,0 +1,42 @@
+<html>
+
+<head>
+    <!--gets jquery, which is used to add widget to page-->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+    <!--script to add widget to search div-->
+    <script>
+        var appSyncToken = '<%= token %>';
+        //function to fetch the widget from its url
+        async function getWidget() {
+            data = {
+                method: 'Get',
+                redirect: 'follow'
+            }
+            widgetUrl = "http://localhost:4000/widget-inline/?auth=" + appSyncToken
+            widget = await fetch(widgetUrl, data).then(result => result.text())
+            return widget
+        }
+        //fetches the widget and adds it to the page
+        getWidget()
+            .then(htmlData => {
+                element = document.getElementById('search')
+                //adds the widget to the search div
+                $("#search").html(htmlData)
+                //console.log(document.getElementById('widget-script'))
+                //console.log(eval(document.getElementById('widget-script')))
+            })
+    </script>
+</head>
+
+<body>
+    <div>
+        <!--div that will contain the widget-->
+        <div id="search" style="width: 50%"></div>
+    </div>
+    <br>
+    <!--an element to show the dropdown goes over the page-->
+    <p>test text, widget dropdown should go over this</p>
+</body>
+
+</html>

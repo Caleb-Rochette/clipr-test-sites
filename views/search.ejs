@@ -1,0 +1,227 @@
+<html>
+
+<head>
+
+</head>
+
+<body>
+
+    <div id='searchVideos' style="width: 45%; float: left">
+        <div>
+            <input id='searchField' type='text' placeholder='search...' style="width: 90%">
+            <button onclick="searchClipr()" style='width: 9%'>Search</button>
+        </div>
+        <h1 style="width: 100%; float: left">Videos</h1>
+        <div id='videoList' style="width: 100%"></div>
+        <h1 style="width: 100%; float: left">Topics</h1>
+        <div id='topicList'></div>
+        <h1 style="width: 100%; float: left">Moments</h1>
+        <div id='momentList' style="width: 100%"></div>
+    </div>
+    <iframe id='video-player' src="" width="45%" height="510px" title="CLIPr Widget" frameborder="0"
+        allowfullscreen="allowfullscreen" allow="autoplay; encrypted-media; picture-in-picture"
+        sandbox="allow-same-origin allow-scripts" style='margin: auto; float: left'></iframe>
+
+    <script type='text/javascript'>
+        var appSyncToken = null
+        var appSyncURL = "https://lo624wnjgbd2fltofinhopkuxe.appsync-api.us-east-1.amazonaws.com/graphql"
+        var tokenUrl = "http://localhost:4000/auth"
+        tokenParams = {
+            method: 'Get',
+            redirect: 'follow'
+        }
+
+        var myHeaders = new Headers();
+
+        if (appSyncToken == null) {
+            fetch(tokenUrl, tokenParams)
+                .then(response => response.text())
+                .then(result => {
+                    appSyncToken = result
+                    myHeaders.append("Authorization", appSyncToken);
+                    myHeaders.append("Content-Type", "application/json");
+                })
+                .error(error => console.error(Error))
+
+        }
+
+
+        function searchClipr() {
+            videoList = document.getElementById('videoList')
+            while (videoList.firstChild) {
+                videoList.removeChild(videoList.firstChild)
+            }
+
+            console.log(myHeaders)
+            getAccessToken()
+            searchQuery = document.getElementById('searchField').value
+            var graphqlJobSearch = JSON.stringify({
+                query: "query MyQuery {\n  getJobs(filter: {_search: \"" + searchQuery + "\", teamId: \"577480a7-235d-47db-a338-1445a529b4bf\"}, first: 20) {\n    edges {\n      node {\n        id\n        title\n        status\n        poster(sizes: {height: 72, width: 128}) {\n          url\n        }\n      }\n    }\n  }\n}\n\n",
+                variables: {}
+            })
+            var graphqlTopicSearch = JSON.stringify({
+                query: "query MyQuery {\n  searchMoments(filter: {teamId: \"577480a7-235d-47db-a338-1445a529b4bf\", _search: \"" + searchQuery + "\", clipType: {eq: \"Topic\"}}) {\n    edges {\n      node {\n        clipType\n        description\n        name\n        momentType\n        thumbnail(sizes: {height: 72, width: 128}) {\n          url\n        }\n        id\n        job {\n          id\n          status\n          title\n        }\n      }\n    }\n  }\n}\n\n\n",
+                variables: {}
+            })
+            var graphqlMomentSearch = JSON.stringify({
+                query: "query MyQuery {\n  searchMoments(filter: {teamId: \"577480a7-235d-47db-a338-1445a529b4bf\", _search: \"" + searchQuery + "\", clipType: {ne: \"Topic\"}}) {\n    edges {\n      node {\n        clipType\n        description\n        name\n        momentType\n        thumbnail(sizes: {height: 72, width: 128}) {\n          url\n        }\n        id\n        job {\n          id\n          status\n          title\n        }\n      }\n    }\n  }\n}\n\n\n",
+                variables: {}
+            })
+            dataJobSearch = {
+                method: 'POST',
+                headers: myHeaders,
+                body: graphqlJobSearch,
+                redirect: 'follow'
+            }
+            dataTopicSearch = {
+                method: 'POST',
+                headers: myHeaders,
+                body: graphqlTopicSearch,
+                redirect: 'follow'
+            }
+            dataMomentSearch = {
+                method: 'POST',
+                headers: myHeaders,
+                body: graphqlMomentSearch,
+                redirect: 'follow'
+            }
+            fetch(appSyncURL, dataJobSearch)
+                .then(response => response.text())
+                .then(result => {
+                    console.log(result)
+                    data = JSON.parse(result)['data']['getJobs']['edges']
+                    data.forEach(video => {
+                        video = video.node
+                        var thumbUrl = video.poster[0].url
+                        if (video.status != "InProgress") {
+                            var newButton = document.createElement("BUTTON")
+                            newButton.innerHTML = "<p style='width: 60%; float: left'><b>" + video.title + "</b></p><img src='" + thumbUrl + "' style='float: left'></img>"
+                            newButton.onclick = function () {
+                                openPlayer(video.id, '0')
+                            }
+                            newButton.style = "width: 49%; height: 100px; padding: 5px; float: left"
+                            document.getElementById('videoList').appendChild(newButton)
+                        }
+                    });
+                })
+                .catch(error => console.log('error', error))
+            fetch(appSyncURL, dataTopicSearch)
+                .then(response => response.text())
+                .then(result => {
+                    console.log(result)
+                    data = JSON.parse(result)['data']['searchMoments']['edges']
+                    data.forEach(topic => {
+                        topic = topic.node
+                        var job = topic.job
+                        var thumbUrl = topic.thumbnail[0].url
+                        console.log(thumbUrl)
+                        if (job.status != "InProgress") {
+                            var newButton = document.createElement("BUTTON")
+                            console.log(topic)
+                            newButton.innerHTML = "<p style='width: 60%; float: left'><b>" + job.title + '</b><br><b>Topic</b><br>' + topic.name + "</p><img src='" + thumbUrl + "' style='float: left'></img>"
+                            console.log(newButton.innerHTML)
+                            newButton.onclick = async function () {
+                                startTime = await getStartTime(topic, job)
+                                openPlayer(job.id, startTime)
+                            }
+                            newButton.style = "width: 49%; height: 100px; padding: 5px; float: left"
+                            document.getElementById('topicList').appendChild(newButton)
+                        }
+                    })
+                })
+                .catch(error => console.log(error))
+            fetch(appSyncURL, dataMomentSearch)
+                .then(response => response.text())
+                .then(result => {
+                    console.log(result)
+                    data = JSON.parse(result)['data']['searchMoments']['edges']
+                    data.forEach(moment => {
+                        moment = moment.node
+                        var job = moment.job
+                        console.log(job.title)
+                        var thumbUrl = moment.thumbnail[0].url
+                        if (job.status != "InProgress") {
+                            var newButton = document.createElement("BUTTON")
+                            newButton.innerHTML = "<p style='width: 60%; float: left'><b>" + job.title + '</b><br><b>' + moment.clipType + '</b><br>' + moment.description.substring(0, 50) + "</p><img src='" + thumbUrl + "' style='float: left'></img>"
+                            newButton.onclick = async function () {
+                                startTime = await getStartTime(moment, job)
+                                openPlayer(job.id, startTime)
+                            }
+                            newButton.style = "width: 49%; height: 100px; padding: 5px; float: left"
+                            document.getElementById('momentList').appendChild(newButton)
+                        }
+                    })
+                })
+                .catch(error => console.log(error))
+
+        }
+
+        async function getStartTime(topic, job) {
+            var graphqlGetMoments = JSON.stringify({
+                query: "query MyQuery {\n  getMoments(jobId: \"" + job.id + "\") {\n    edges {\n      node {\n        id\n        startTime\n  clipType\n  name\n    description\n  }\n    }\n  }\n}\n\n\n",
+                variables: {}
+            })
+            dataGetMoments = {
+                method: 'POST',
+                headers: myHeaders,
+                body: graphqlGetMoments,
+                redirect: 'follow'
+            }
+            result = await fetch(appSyncURL, dataGetMoments)
+                .then(response => response.text())
+            //console.log(result)
+            data = JSON.parse(result)['data']['getMoments']['edges']
+            var i;
+            search = document.getElementById("searchField").value
+            for (i = 0; i < data.length; i++) {
+                moment = data[i].node
+                if (moment.clipType == "Topic" && moment.description.includes(search)) {
+                    console.log(moment.description)
+                }
+                if (topic.id == moment.id) {
+                    startTime = moment.startTime
+                    break
+                }
+            }
+            return startTime
+
+
+        }
+
+        function openPlayer(jobId, startTime) {
+            vidPlayer = document.getElementById('video-player')
+            vidPlayer.style.display = 'inline'
+            vidPlayer.src = 'https://staging.cliprai.dev/widget/' + jobId + '?autoplay=false&time=' + startTime + '&cust=polyi'
+            console.log(vidPlayer.src)
+            console.log(jobId)
+        }
+
+        function getAccessToken() {
+            data = JSON.stringify({
+                "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
+                "realm": "Machine-Authentication",
+                "client_id": "vqvoRIBjwI3BuDNhN0EjqTbnaiDJfuAt",
+                "username": "4f00f7403145435ebd49a8ac68331fd5",
+                "password": "gzimnigsoqzffjiwmpebjv^jzbcmoiaarsxzvkgwikiezsrsqJwwbbddrvwfzfjf"
+            })
+            tokenHeaders = new Headers()
+            tokenHeaders.append('Content-Type', 'application/javascript')
+            console.log(tokenHeaders)
+            args = {
+                method: 'POST',
+                tokenHeaders,
+                body: data,
+                redirect: 'follow'
+            }
+            console.log(args)
+            fetch(tokenUrl, args)
+                .then(response => {
+                    console.log(response)
+                }).catch(error => console.log('error', error))
+        }
+
+    </script>
+
+</body>
+
+</html>
